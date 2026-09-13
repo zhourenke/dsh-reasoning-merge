@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+.pnpm-store/
+.payload-verify/
+.profile-before-web/
+.DS_Store
+Thumbs.db
+*.log
+
+# Route A publishes the compiled lib/ files, so lib/ and lib/types/ stay tracked.
