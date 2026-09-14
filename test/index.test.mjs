@@ -3,7 +3,6 @@ import test from 'node:test'
 import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 import {
   apply,
-  inject,
   name,
   normalizeReasoningChunks,
   normalizeReasoningStream,
@@ -75,7 +74,6 @@ function reasoningBlocks(chunks) {
 
 test('exports the Host plugin contract', () => {
   assert.equal(name, 'dsh-reasoning-merge')
-  assert.deepEqual(inject, ['llm'])
   assert.equal(typeof apply, 'function')
   assert.equal(typeof normalizeReasoningStream, 'function')
 })

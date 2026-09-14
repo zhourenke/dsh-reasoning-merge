@@ -1,6 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
-import type {} from '@deepseek-ai/dsh-llm'
 
 type ReasoningStartChunk = Extract<StreamChunk, { type: 'block-start' }>
 type ReasoningDeltaChunk = Extract<StreamChunk, { type: 'reasoning-delta' }>
@@ -347,7 +346,6 @@ export async function* normalizeReasoningStream(
 }
 
 export const name = 'dsh-reasoning-merge'
-export const inject = ['llm']
 
 export function apply(ctx: Context): void {
   ctx.on('llm/stream', (_options, next) => normalizeReasoningStream(next()))

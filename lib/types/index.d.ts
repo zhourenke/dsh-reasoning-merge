@@ -11,5 +11,4 @@ export declare function normalizeReasoningChunks(chunks: readonly StreamChunk[])
  */
 export declare function normalizeReasoningStream(stream: AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk>;
 export declare const name = "dsh-reasoning-merge";
-export declare const inject: string[];
 export declare function apply(ctx: Context): void;
