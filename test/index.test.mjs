@@ -57,12 +57,6 @@ function finish(kind = 'stop', replayState) {
   }
 }
 
-function streamOf(chunks) {
-  return (async function* () {
-    for (const chunk of chunks) yield chunk
-  })()
-}
-
 async function collect(iterable) {
   const output = []
   for await (const chunk of iterable) output.push(chunk)
