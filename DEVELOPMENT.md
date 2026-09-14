@@ -63,6 +63,7 @@ and must be re-checked whenever either the transformer or the README changes.
 | Only new responses are affected | The transformer rewrites the live stream only; durable records already written are never revisited. |
 | Install and uninstall require a restart | Bundle layers are snapshotted at process start, and this plugin is a bundle-layer row. |
 | No configuration, no off switch | The plugin declares no config and no settings section; disabling means uninstalling. |
+| Removable at any time; new responses then return to the original division | The transformer runs only while its bundle row is composed. Removing the row through a dependency install stops loading at the next start, so the live stream is no longer rewritten. Durable records are never rewritten: removal does not un-merge history. |
 
 Verify the record-level claim on a live session (decompress
 `session.v3.jsonl.zstd` first; the expected result is only `1` and `0`, never
@@ -95,3 +96,19 @@ DSH manually after the mount or after host code changes.
 The profile before-image used for the mount is intentionally ignored by git and
 must remain available until the profile files, junction target, and final hashes
 have been checked.
+
+## Removal
+
+Removal behaves differently depending on the install form (measured on
+DSH v0.1.5-rc.1, 2026-09, in a throwaway profile):
+
+| Install form | `dsh plugin remove` | Result |
+|---|---|---|
+| Dependency install (`dsh plugin add`, incl. `link:`) | exit 0 | The `dependencies` entry and the `dsh.profile.bundles` row are both removed; the composed config afterwards has no `dsh-reasoning-merge` row, so the next start does not load the plugin and new responses restore the original block division. An orphaned junction may remain in `node_modules` and is harmless. |
+| Manual junction mount (not in `dependencies`) | exit 1 (`ERR_PNPM_CANNOT_REMOVE_MISSING_DEPS`) | Nothing is cleaned: the `bundles` row stays and the junction stays. |
+
+A manual junction mount therefore needs the three manual steps: delete the
+junction non-recursively (`[System.IO.Directory]::Delete($link, $false)`),
+remove the package name from `dsh.profile.bundles` by hand, and restart DSH.
+This is the reason the README scopes its uninstall command to dependency
+installs and calls out the junction case.

@@ -11,7 +11,7 @@ DSH renders a response by the content blocks the provider returns: when one resp
 - **Several thinking regions in a row for one response**: when the provider splits its reasoning into several blocks, the UI shows them one after another; this plugin joins them into one.
 - **Nothing is lost**: only the block division changes; no reasoning text is added or removed.
 - **Nothing else is touched**: visible text, tool-call arguments, usage, and finish reasons are unaffected.
-- **Removable at any time**: it installs as a profile layer and never modifies DSH itself; after uninstalling and restarting, the original division is back.
+- **Removable at any time**: it installs as a profile layer and never modifies DSH itself; an install made with `dsh plugin add` is removed with one command, and after a restart **new responses** return to the original division.
 
 ## Prerequisites
 
@@ -41,6 +41,8 @@ dsh plugin --profile web remove @zhourenke/dsh-reasoning-merge
 ```
 
 A restart is required after uninstalling as well.
+
+> ⚠️ The uninstall command above only applies to installs made with `dsh plugin add` (the plugin is then listed in the profile's `dependencies`). For a manual junction mount it does not work (measured: exit code 1, the `bundles` entry stays), so remove it by hand in three steps: delete the junction → remove the package name from `dsh.profile.bundles` → restart DSH.
 
 ## How to confirm it is working
 
