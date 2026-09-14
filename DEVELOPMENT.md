@@ -50,8 +50,9 @@ matching `BlockAssembler` behavior.
 
 ## User-visible contract
 
-The README promises the following; each promise is backed by the policy above
-and must be re-checked whenever either the transformer or the README changes.
+The transformer's user-visible behavior contract; the README states a
+trimmed subset of it. Each row is backed by the policy above and must stay
+true whenever either the transformer or the README changes.
 
 | README statement | Backing behavior |
 |---|---|
