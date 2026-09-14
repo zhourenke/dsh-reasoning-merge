@@ -4,13 +4,12 @@
 
 **Merges the consecutive reasoning segments of one model response into a single one, so the UI shows one thinking region instead of several.**
 
-DSH renders a response by the content blocks the provider returns: when one response is split into several consecutive reasoning blocks, the UI lists several thinking regions in a row. This plugin steps into that host-side stream and joins **adjacent reasoning blocks of the same response** into one (a blank line is inserted between the joined segments), while text, tool calls, usage, and finish reasons pass through untouched. There is no configuration and no UI control; it works as soon as it is loaded.
+DSH renders a response from the content blocks the provider returns; when one response is split into several reasoning segments, this plugin joins them into one (a blank line is inserted between the joined segments); everything else passes through untouched. There is no configuration and no UI control; it works as soon as it is loaded.
 
 ## What it solves
 
-- **Several thinking regions in a row for one response**: when the provider splits its reasoning into several blocks, the UI shows them one after another; this plugin joins them into one.
-- **Nothing is lost**: only the block division changes; no reasoning text is added or removed.
-- **Nothing else is touched**: visible text, tool-call arguments, usage, and finish reasons are unaffected.
+- **Several thinking regions in a row for one response**: when the provider splits its reasoning into several segments, the UI shows them one after another; with this plugin installed, only one remains.
+- **Only the division changes, not the content**: no reasoning text is added or removed, and text, tool calls, usage, and finish reasons are unaffected.
 
 ## Installation
 
@@ -28,7 +27,7 @@ dsh plugin --profile web remove @zhourenke/dsh-reasoning-merge
 
 ## Scope
 
-This plugin joins only **adjacent reasoning segments within one model response** — one response corresponds to one model call, and only adjacent segments are joined. When visible text or a tool call appears in between, the current segment ends there and any reasoning that follows is a new segment; the same holds for a new response after a tool call. Merging changes nothing about the content: no reasoning text is added or removed, a blank line is inserted between the former segments, and text, tool calls, usage, and finish reasons pass through untouched.
+Merging happens only between adjacent reasoning segments within one response — one response corresponds to one model call. When text or a tool call appears in the middle of the reasoning, the current segment ends there and what follows starts a new segment; so does the next response after a tool call.
 
 ## Compatibility
 
