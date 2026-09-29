@@ -19,6 +19,8 @@ dsh plugin --profile web add "github:zhourenke/dsh-reasoning-merge"
 
 安装后需要**重启 DSH**。
 
+装好后，DSH 的插件列表里会显示本插件的中文/英文名称、说明与图标，随界面语言切换。
+
 卸载：
 
 ```powershell
@@ -31,7 +33,7 @@ dsh plugin --profile web remove @zhourenke/dsh-reasoning-merge
 
 ## 兼容性
 
-在 **DSH v0.1.5-rc.1**（2026-09）下测试通过。
+在 **DSH v0.1.7-rc.2**（2026-09）下测试通过。
 
 ## 许可证
 

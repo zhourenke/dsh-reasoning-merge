@@ -1,15 +1,29 @@
+/**
+ * @zhourenke/dsh-reasoning-merge
+ *
+ * Merges the adjacent reasoning blocks of one model response by wrapping the
+ * global `llm/stream` waterfall. There is no browser half.
+ *
+ * Verified against DSH 0.1.7-rc.2: the `llm/stream` waterfall signature, the
+ * `StreamChunk` grammar, the `reasoning` block shape, and the
+ * `finish.replayState` envelope are all unchanged from the version this plugin
+ * was first written against. No shipped DSH package merges adjacent reasoning
+ * blocks, so the transform still owns exactly one behavior: `BlockAssembler`
+ * keeps one block per stream index, the compact `AssistantStreamAccumulator`
+ * packs delta runs per index, and the chat client keys its live block list by
+ * `chunk.index`.
+ *
+ * @module @zhourenke/dsh-reasoning-merge
+ */
+
 import type { Context } from '@deepseek-ai/cordis'
-import type { StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, ReplayEnvelope, StreamChunk } from '@deepseek-ai/dsh-llm'
 
 type ReasoningStartChunk = Extract<StreamChunk, { type: 'block-start' }>
 type ReasoningDeltaChunk = Extract<StreamChunk, { type: 'reasoning-delta' }>
-type ReasoningEndChunk = {
-  type: 'block-end'
-  index: number
-  block: {
-    type: 'reasoning'
-    text: string
-  }
+/** A reasoning `block-end`, narrowed from the host's own block union. */
+type ReasoningEndChunk = Extract<StreamChunk, { type: 'block-end' }> & {
+  block: Extract<ContentBlock, { type: 'reasoning' }>
 }
 
 function isReasoningStart(chunk: StreamChunk): chunk is ReasoningStartChunk {
@@ -46,7 +60,7 @@ interface ReasoningGroup {
   hasMeaningfulText: boolean
 }
 
-function reasoningStart(index: number): StreamChunk {
+function reasoningStart(index: number): ReasoningStartChunk {
   return {
     type: 'block-start',
     index,
@@ -54,7 +68,7 @@ function reasoningStart(index: number): StreamChunk {
   }
 }
 
-function reasoningDelta(index: number, text: string): StreamChunk {
+function reasoningDelta(index: number, text: string): ReasoningDeltaChunk {
   return {
     type: 'reasoning-delta',
     index,
@@ -185,8 +199,12 @@ class ReasoningNormalizer {
   }
 
   private finishChunk(chunk: Extract<StreamChunk, { type: 'finish' }>): StreamChunk {
-    const replay = chunk.replayState
+    const replay: ReplayEnvelope | undefined = chunk.replayState
     if (!this.mergeOccurred || replay?.blocks === undefined) return chunk
+    // `ReplayEnvelope.blocks` carries one entry per emitted block, and assembly
+    // discards the whole envelope when that length no longer matches the emitted
+    // block count. Merging changed the count, so retain the response-level half
+    // and drop the block-aligned one — the one drop the host contract allows.
     return {
       ...chunk,
       replayState: {

@@ -17,8 +17,30 @@ README makes that must stay true.
 | `lib/index.js` and `lib/types/` | Precompiled Route A distribution artifacts |
 | `test/index.test.mjs` | Pure, assembler, lifecycle, and plugin contract tests |
 | `cordis.patch.yml` | Bundle patch that inserts the Host plugin row |
+| `icon.svg` | Plugin-list icon, read by the Host without evaluating plugin code |
+| `locale/en.json` / `locale/zh.json` | Plugin-list display text, one file per language id |
 | `README.md` / `README.en.md` | User-facing install and verification guide (auto-included in the package payload) |
 | `.profile-before-web/` | Local-only before-image for the authorized web-profile mount |
+
+## Host baseline
+
+Verified against **DSH v0.1.7-rc.2** and Cordis **4.0.4**. Re-run the release
+guide's 「DSH 升级后的复核」 after every Host upgrade; the four checks that
+matter for this plugin are the `llm/stream` waterfall signature, the
+`StreamChunk` grammar, the exported host symbols, and the admission gate.
+
+The transform is not a Host feature. Checked against the shipped packages:
+
+| Host mechanism | Keyed by | Why it does not merge |
+|---|---|---|
+| `BlockAssembler` (`dsh-llm`) | stream `index` | One partial per index; adjacent reasoning indexes stay two blocks. |
+| `AssistantStreamAccumulator` (`dsh-llm`) | stream `index` | Packs consecutive deltas of one index into a run; never joins two indexes. |
+| Live chat block state (`dsh-client-ui-chat`) | `chunk.index` | `blocks[chunk.index]`; two indexes remain two rendered regions. |
+| pi-ai responses stream (`@earendil-works/pi-ai`) | `event.output_index` | Each reasoning output item gets its own slot, which is what splits one response into several reasoning blocks in the first place. |
+
+No shipped DSH package merges adjacent reasoning blocks, and the version this
+plugin pins is the version it was verified against.
+
 
 ## Local development
 
@@ -41,7 +63,12 @@ consecutive reasoning sources, uses two line breaks between non-empty sources,
 and keeps text, tool-call, usage, finish reason, and request boundaries intact.
 A synthetic reasoning block end is emitted before every non-reasoning boundary.
 When merging changes the block count, `finish.replayState.response` is retained
-and the opaque block-aligned `replayState.blocks` field is removed.
+and the opaque block-aligned `replayState.blocks` field is removed. That drop is
+the one the Host contract sanctions: `ReplayEnvelope.blocks` carries one entry
+per emitted block, and assembly discards the whole envelope when that length no
+longer matches the emitted block count — so keeping it after a merge would cost
+the response-level half too. The options object is only read; a loop-built
+request arrives deep-frozen and is never rewritten.
 
 The transformer also synthesizes a reasoning start for delta-only or
 block-end-only reasoning so the result satisfies the installed LLM stream
@@ -101,7 +128,9 @@ have been checked.
 ## Removal
 
 Removal behaves differently depending on the install form (measured on
-DSH v0.1.5-rc.1, 2026-09, in a throwaway profile):
+DSH v0.1.5-rc.1, 2026-09, in a throwaway profile; not re-measured on
+0.1.7-rc.2 — this path is package-manager and profile bookkeeping rather than
+Host behavior):
 
 | Install form | `dsh plugin remove` | Result |
 |---|---|---|

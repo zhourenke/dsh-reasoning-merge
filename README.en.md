@@ -19,6 +19,8 @@ dsh plugin --profile web add "github:zhourenke/dsh-reasoning-merge"
 
 **Restart DSH** after installing.
 
+Once loaded, the DSH plugin list shows this plugin's name, description, and icon in the interface language.
+
 Uninstall:
 
 ```powershell
@@ -31,7 +33,7 @@ Merging happens only between adjacent reasoning segments within one response —
 
 ## Compatibility
 
-Tested with **DSH v0.1.5-rc.1** (2026-09).
+Tested with **DSH v0.1.7-rc.2** (2026-09).
 
 ## License
 

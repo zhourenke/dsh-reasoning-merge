@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Reasoning Merge",
+    "description": "Joins the consecutive reasoning segments of one model response into a single one, so the UI shows one thinking region instead of several."
+  }
+}
