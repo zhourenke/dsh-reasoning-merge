@@ -33,7 +33,7 @@ Merging happens only between adjacent reasoning segments within one response —
 
 ## Compatibility
 
-Tested with **DSH v0.1.7-rc.2** (2026-09).
+Tested with **DSH v0.2.0-rc.2** (2026-09).
 
 ## License
 

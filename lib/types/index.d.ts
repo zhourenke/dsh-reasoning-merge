@@ -4,14 +4,14 @@
  * Merges the adjacent reasoning blocks of one model response by wrapping the
  * global `llm/stream` waterfall. There is no browser half.
  *
- * Verified against DSH 0.1.7-rc.2: the `llm/stream` waterfall signature, the
+ * Verified against DSH 0.2.0-rc.2: the `llm/stream` waterfall signature, the
  * `StreamChunk` grammar, the `reasoning` block shape, and the
- * `finish.replayState` envelope are all unchanged from the version this plugin
- * was first written against. No shipped DSH package merges adjacent reasoning
- * blocks, so the transform still owns exactly one behavior: `BlockAssembler`
- * keeps one block per stream index, the compact `AssistantStreamAccumulator`
- * packs delta runs per index, and the chat client keys its live block list by
- * `chunk.index`.
+ * `finish.replayState` envelope are all unchanged across two host upgrades. No
+ * shipped DSH package merges adjacent reasoning blocks, so the transform still
+ * owns exactly one behavior: `BlockAssembler` keeps one block per stream index,
+ * `AssistantStreamAccumulator` packs delta runs per index, the 0.2.0
+ * `joinAssistantStreamText` joins text fragments while excluding reasoning, and
+ * the chat client keys its live block list by `chunk.index`.
  *
  * @module @zhourenke/dsh-reasoning-merge
  */
