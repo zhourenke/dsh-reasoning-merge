@@ -319,21 +319,36 @@ class ReasoningNormalizer {
     this.group = undefined
     return output
   }
+
+  /**
+   * Emit whatever the stream still holds. Feeding a chunk cannot observe the end
+   * of the input, so whoever stops feeding calls this: the wrapper when the
+   * provider stream ends, the in-memory helper after its last chunk.
+   */
+  drain(): StreamChunk[] {
+    return this.flushGroup()
+  }
 }
 
 /**
  * Normalize one complete in-memory chunk sequence with the same state machine
- * used by the streaming wrapper. The helper is useful for focused tests.
+ * used by the streaming wrapper. The sequence counts as complete input, so a
+ * group still open at its end is closed — exactly as the wrapper closes it when
+ * the provider stream ends. The helper is useful for focused tests.
  */
 export function normalizeReasoningChunks(chunks: readonly StreamChunk[]): StreamChunk[] {
   const normalizer = new ReasoningNormalizer()
   const output: StreamChunk[] = []
   for (const chunk of chunks) output.push(...normalizer.transform(chunk))
+  output.push(...normalizer.drain())
   return output
 }
 
 /**
- * Wrap one provider stream without buffering the complete response. The
+ * Wrap one provider stream without buffering the complete response. A group the
+ * provider left open when its stream ends is closed, so a stream that stops
+ * without a terminal `finish` still leaves every block terminated. A `finish`
+ * chunk is never synthesized: that terminal event belongs to the provider. The
  * upstream iterator is explicitly closed when a consumer stops early.
  */
 export async function* normalizeReasoningStream(
@@ -349,6 +364,7 @@ export async function* normalizeReasoningStream(
       const result = await iterator.next()
       if (result.done) {
         completed = true
+        for (const chunk of normalizer.drain()) yield chunk
         return
       }
       for (const chunk of normalizer.transform(result.value)) yield chunk

@@ -19,11 +19,16 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { StreamChunk } from '@deepseek-ai/dsh-llm';
 /**
  * Normalize one complete in-memory chunk sequence with the same state machine
- * used by the streaming wrapper. The helper is useful for focused tests.
+ * used by the streaming wrapper. The sequence counts as complete input, so a
+ * group still open at its end is closed — exactly as the wrapper closes it when
+ * the provider stream ends. The helper is useful for focused tests.
  */
 export declare function normalizeReasoningChunks(chunks: readonly StreamChunk[]): StreamChunk[];
 /**
- * Wrap one provider stream without buffering the complete response. The
+ * Wrap one provider stream without buffering the complete response. A group the
+ * provider left open when its stream ends is closed, so a stream that stops
+ * without a terminal `finish` still leaves every block terminated. A `finish`
+ * chunk is never synthesized: that terminal event belongs to the provider. The
  * upstream iterator is explicitly closed when a consumer stops early.
  */
 export declare function normalizeReasoningStream(stream: AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk>;

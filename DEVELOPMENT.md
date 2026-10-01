@@ -84,6 +84,16 @@ block-end-only reasoning so the result satisfies the installed LLM stream
 invariant. A delta arriving after its source index has been closed is ignored,
 matching `BlockAssembler` behavior.
 
+A group is held open until a non-reasoning chunk proves the reasoning has
+ended, so the end of the input has to close it too: both entry points drain the
+normalizer after their last chunk, and the streaming wrapper does it when the
+provider stream reports done. That covers a provider that stops without a
+terminal `finish` — the parity a truncated stream would otherwise lose, since
+the block end it was holding is the one the grammar needs. No `finish` chunk is
+ever synthesized: that terminal event belongs to the provider, and inventing one
+would also mean inventing a `reason`. For every well-formed provider stream the
+drain is a no-op, because `finish` already closed the group.
+
 ## Stream state invariants
 
 The transformer is a small state machine, and three invariants hold it together.
@@ -120,7 +130,7 @@ true whenever either the transformer or the README changes.
 | One thinking region per response | Adjacent reasoning sources become one block that keeps the first source's index. |
 | Former segments joined in order, separated by a blank line | Two line breaks are inserted between non-empty sources; whitespace-only sources contribute no separator. |
 | Merging happens within one response only | Normalizer state is created per `llm/stream` call and never crosses calls. |
-| Reasoning separated by text or a tool call is not merged | A non-reasoning chunk closes the current group with a synthetic block end; the next reasoning block starts a new group. |
+| Reasoning separated by text or a tool call is not merged | A non-reasoning chunk closes the current group with a synthetic block end, and so does the end of the input; the next reasoning block starts a new group. |
 | Text, tool calls, usage, and finish reasons are unchanged | Every non-reasoning chunk is forwarded as received; only merged groups get rewritten indices. |
 | Only new responses are affected | The transformer rewrites the live stream only; durable records already written are never revisited. |
 | Install and uninstall require a restart | Bundle layers are snapshotted at process start, and this plugin is a bundle-layer row. |

@@ -434,6 +434,40 @@ test('streams a complete provider response through to its end', async () => {
   ])
 })
 
+test('closes an open group when the input ends without a finish', () => {
+  const closed = normalizeReasoningChunks([
+    start(0), reasoningDelta(0, 'A'), reasoningEnd(0, 'A'),
+  ])
+  const pending = normalizeReasoningChunks([
+    start(0), reasoningDelta(0, 'A'), reasoningEnd(0, 'A'),
+    start(1), reasoningDelta(1, ' '),
+  ])
+
+  assert.deepEqual(reasoningBlocks(closed), [{ type: 'reasoning', text: 'A' }])
+  assert.equal(closed.at(-1).type, 'block-end')
+  assert.equal(closed.at(-1).block.type, 'reasoning')
+  assert.equal(closed.some((chunk) => chunk.type === 'finish'), false)
+
+  assert.deepEqual(reasoningBlocks(pending), [{ type: 'reasoning', text: 'A ' }])
+  assert.deepEqual(
+    pending.filter((chunk) => chunk.type === 'reasoning-delta').map((chunk) => chunk.text),
+    ['A', ' '],
+  )
+})
+
+test('flushes the open group when the provider stream ends without a finish', async () => {
+  const streamed = await collect(normalizeReasoningStream((async function* () {
+    yield start(0)
+    yield reasoningDelta(0, 'A')
+    yield reasoningEnd(0, 'A')
+  })()))
+
+  assert.deepEqual(reasoningBlocks(streamed), [{ type: 'reasoning', text: 'A' }])
+  assert.equal(streamed.at(-1).type, 'block-end')
+  assert.equal(streamed.some((chunk) => chunk.type === 'finish'), false)
+  assert.deepEqual(assemble(streamed).blocks(), [{ type: 'reasoning', text: 'A' }])
+})
+
 test('an upstream return() failure never masks a stream failure', async () => {
   const source = {
     [Symbol.asyncIterator]() {
