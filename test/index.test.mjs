@@ -94,6 +94,29 @@ test('registers exactly one llm stream waterfall listener', () => {
   assert.equal(typeof registrations[0].listener, 'function')
 })
 
+test('the registered listener merges reasoning across the provider stream', async () => {
+  const registrations = []
+  apply({
+    on(eventName, listener) {
+      registrations.push({ eventName, listener })
+      return () => true
+    },
+  })
+  const provider = (async function* () {
+    yield start(0)
+    yield reasoningDelta(0, 'A')
+    yield reasoningEnd(0, 'A')
+    yield start(1)
+    yield reasoningDelta(1, 'B')
+    yield reasoningEnd(1, 'B')
+    yield finish()
+  })()
+
+  const output = await collect(registrations[0].listener({}, () => provider))
+
+  assert.deepEqual(reasoningBlocks(output), [{ type: 'reasoning', text: 'A\n\nB' }])
+})
+
 test('merges two complete consecutive reasoning blocks with one separator', () => {
   const input = [
     start(0), reasoningDelta(0, 'A'), reasoningEnd(0, 'A'),
@@ -162,6 +185,64 @@ test('buffers whitespace until a following source is known to be meaningful', ()
     output.filter((chunk) => chunk.type === 'reasoning-delta').map((chunk) => chunk.text),
     ['A', '\n\n B'],
   )
+})
+
+test('a source that never ended is closed instead of merged', () => {
+  const viaStart = normalizeReasoningChunks([
+    start(0), reasoningDelta(0, 'A'),
+    start(7), reasoningDelta(7, 'B'), reasoningEnd(7, 'B'),
+    finish(),
+  ])
+  const viaDelta = normalizeReasoningChunks([
+    start(0), reasoningDelta(0, 'A'),
+    reasoningDelta(9, 'B'), reasoningEnd(9, 'B'),
+    finish(),
+  ])
+
+  for (const output of [viaStart, viaDelta]) {
+    assert.deepEqual(reasoningBlocks(output), [
+      { type: 'reasoning', text: 'A' },
+      { type: 'reasoning', text: 'B' },
+    ])
+  }
+})
+
+test('a source that carries its text only on the block-end still merges', () => {
+  const output = normalizeReasoningChunks([
+    start(0), reasoningDelta(0, 'A'), reasoningEnd(0, 'A'),
+    start(1), reasoningEnd(1, 'X'),
+    finish(),
+  ])
+
+  assert.deepEqual(reasoningBlocks(output), [{ type: 'reasoning', text: 'A\n\nX' }])
+  assert.deepEqual(
+    output.filter((chunk) => chunk.type === 'reasoning-delta').map((chunk) => chunk.text),
+    ['A', '\n\nX'],
+  )
+})
+
+test('a whitespace-only source is emitted without a separator', () => {
+  const output = normalizeReasoningChunks([
+    start(0), reasoningDelta(0, 'A'), reasoningEnd(0, 'A'),
+    start(1), reasoningDelta(1, ' '), reasoningEnd(1, ' '),
+    finish(),
+  ])
+
+  assert.deepEqual(reasoningBlocks(output), [{ type: 'reasoning', text: 'A ' }])
+  assert.deepEqual(
+    output.filter((chunk) => chunk.type === 'reasoning-delta').map((chunk) => chunk.text),
+    ['A', ' '],
+  )
+})
+
+test('an index that arrives without a start joins the group once the source ended', () => {
+  const output = normalizeReasoningChunks([
+    start(0), reasoningEnd(0, 'A'),
+    reasoningDelta(9, 'B'), reasoningEnd(9, 'B'),
+    finish(),
+  ])
+
+  assert.deepEqual(reasoningBlocks(output), [{ type: 'reasoning', text: 'A\n\nB' }])
 })
 
 test('flushes reasoning before text and leaves text chunks unchanged', () => {
@@ -276,6 +357,18 @@ test('late deltas after a closed source do not become merged content', () => {
   assert.equal(output.some((chunk) => chunk.type === 'reasoning-delta' && chunk.text === 'late'), false)
 })
 
+test('a repeated start, end, or delta for a closed index is dropped', () => {
+  const output = normalizeReasoningChunks([
+    start(0), reasoningDelta(0, 'A'), reasoningEnd(0, 'A'),
+    start(0), reasoningDelta(0, 'late'), reasoningEnd(0, 'late'),
+    start(5), reasoningDelta(5, 'C'), reasoningEnd(5, 'C'), reasoningEnd(5, 'C'),
+    finish(),
+  ])
+
+  assert.deepEqual(reasoningBlocks(output), [{ type: 'reasoning', text: 'A\n\nC' }])
+  assert.equal(output.filter((chunk) => chunk.type === 'reasoning-delta').length, 2)
+})
+
 test('propagates upstream stream failures', async () => {
   const source = (async function* () {
     yield start(0)
@@ -322,4 +415,57 @@ test('does not emit a synthetic end after early cancellation', async () => {
   assert.deepEqual((await iterator.next()).value, start(0))
   await iterator.return()
   assert.deepEqual(await iterator.next(), { value: undefined, done: true })
+})
+
+test('streams a complete provider response through to its end', async () => {
+  const input = [
+    start(0), reasoningDelta(0, 'A'), reasoningEnd(0, 'A'),
+    textStart(2), textDelta(2, 'answer'), textEnd(2, 'answer'),
+    usage(), finish(),
+  ]
+  const streamed = await collect(normalizeReasoningStream((async function* () {
+    for (const chunk of input) yield chunk
+  })()))
+
+  assert.deepEqual(streamed, normalizeReasoningChunks(input))
+  assert.deepEqual(assemble(streamed).blocks(), [
+    { type: 'reasoning', text: 'A' },
+    { type: 'text', text: 'answer' },
+  ])
+})
+
+test('an upstream return() failure never masks a stream failure', async () => {
+  const source = {
+    [Symbol.asyncIterator]() {
+      return {
+        async next() {
+          throw new Error('stream failed')
+        },
+        async return() {
+          throw new Error('return failed')
+        },
+      }
+    },
+  }
+
+  await assert.rejects(collect(normalizeReasoningStream(source)), /stream failed/)
+})
+
+test('an upstream return() failure surfaces after early cancellation', async () => {
+  const source = {
+    [Symbol.asyncIterator]() {
+      return {
+        async next() {
+          return { value: start(0), done: false }
+        },
+        async return() {
+          throw new Error('return failed')
+        },
+      }
+    },
+  }
+  const iterator = normalizeReasoningStream(source)[Symbol.asyncIterator]()
+
+  assert.deepEqual((await iterator.next()).value, start(0))
+  await assert.rejects(iterator.return(), /return failed/)
 })

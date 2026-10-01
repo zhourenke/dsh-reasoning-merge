@@ -84,6 +84,31 @@ block-end-only reasoning so the result satisfies the installed LLM stream
 invariant. A delta arriving after its source index has been closed is ignored,
 matching `BlockAssembler` behavior.
 
+## Stream state invariants
+
+The transformer is a small state machine, and three invariants hold it together.
+They are what let it merge while streaming instead of buffering, and the code
+relies on them rather than re-checking them at every step:
+
+- **A group keeps its first source's index.** Emitted chunks are rewritten to
+  `group.mergedIndex`, fixed when the group opens and never changed. That is why
+  sources can be emitted live as they arrive: only the sources after the first
+  need an index rewrite, and whether to merge is known the moment one starts.
+- **An outstanding separator is the only text ever held back.** `pendingText` is
+  written in a single place — the first delta of a source that joined a
+  non-empty group — and cleared whenever it is flushed, so nothing stays trapped
+  once a source has emitted.
+- **A source is `closed` exactly when its index is already in
+  `closedIndexes`.** Both are set together in `closeCurrent` and neither is
+  undone, and a source is only ever created for an index not yet there. "The
+  active source has ended" and "this index already produced a block" are then the
+  same question at two scopes, which is why a repeated start, delta, or
+  block-end for a closed index drops uniformly.
+
+A source that never ended is closed when the next block arrives rather than
+merged into it, so a provider that restarts a block without ending the previous
+one gets two blocks and no text is spliced across a boundary the provider drew.
+
 ## User-visible contract
 
 The transformer's user-visible behavior contract; the README states a

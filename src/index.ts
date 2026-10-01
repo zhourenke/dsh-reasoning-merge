@@ -120,10 +120,13 @@ function emitUnemittedText(
   fallbackText: string,
 ): StreamChunk[] {
   const output: StreamChunk[] = []
-  const pending = item.pendingText
 
+  // An outstanding separator is the only state that holds text back, so
+  // `pendingText` is the whole of what the source has not emitted yet, and an
+  // empty one means the provider carried the text on the block-end instead of
+  // in deltas.
   if (item.needsSeparator && !item.separatorEmitted) {
-    const candidate = pending || fallbackText
+    const candidate = item.pendingText || fallbackText
     if (hasMeaningfulText(candidate)) {
       item.pendingText = ''
       item.separatorEmitted = true
@@ -137,13 +140,6 @@ function emitUnemittedText(
       item.emittedText += candidate
       output.push(reasoningDelta(group.mergedIndex, candidate))
     }
-    return output
-  }
-
-  if (pending !== '') {
-    item.pendingText = ''
-    item.emittedText += pending
-    output.push(reasoningDelta(group.mergedIndex, pending))
     return output
   }
 
@@ -216,85 +212,93 @@ class ReasoningNormalizer {
   private reasoningStart(chunk: ReasoningStartChunk): StreamChunk[] {
     if (this.closedIndexes.has(chunk.index)) return []
 
-    const output: StreamChunk[] = []
-    if (this.group !== undefined && !this.group.current.closed) {
-      output.push(...this.flushGroup())
+    const group = this.group
+    if (group === undefined) {
+      this.group = groupFor(chunk.index)
+      return [chunk]
     }
 
-    if (this.group === undefined) {
+    // A start never continues an open source: the provider is opening a block,
+    // so an unclosed one is closed first rather than being spliced into.
+    if (!group.current.closed) {
+      const output = this.flushGroup()
       this.group = groupFor(chunk.index)
       output.push(chunk)
       return output
     }
 
-    this.addSource(chunk.index)
-    return output
+    this.addSource(group, chunk.index)
+    return []
   }
 
   private reasoningDelta(chunk: ReasoningDeltaChunk): StreamChunk[] {
     if (this.closedIndexes.has(chunk.index)) return []
 
-    const output: StreamChunk[] = []
-    if (this.group === undefined) {
-      this.group = groupFor(chunk.index)
-      output.push(reasoningStart(chunk.index))
-      output.push(...appendDelta(this.group, this.group.current, chunk))
-      return output
-    }
-
-    if (this.group.current.index !== chunk.index) {
-      if (!this.group.current.closed) {
-        output.push(...this.flushGroup())
-        this.group = groupFor(chunk.index)
-        output.push(reasoningStart(chunk.index))
-      } else {
-        this.addSource(chunk.index)
-      }
-    }
-
-    output.push(...appendDelta(this.group, this.group.current, chunk))
-    return output
+    const active = this.ensureActiveSource(chunk.index)
+    active.output.push(...appendDelta(active.group, active.group.current, chunk))
+    return active.output
   }
 
   private reasoningEnd(chunk: ReasoningEndChunk): StreamChunk[] {
     if (this.closedIndexes.has(chunk.index)) return []
 
-    const output: StreamChunk[] = []
-    if (this.group === undefined) {
-      this.group = groupFor(chunk.index)
-      output.push(reasoningStart(chunk.index))
-    } else if (this.group.current.index !== chunk.index) {
-      if (!this.group.current.closed) {
-        output.push(...this.flushGroup())
-        this.group = groupFor(chunk.index)
-        output.push(reasoningStart(chunk.index))
-      } else {
-        this.addSource(chunk.index)
-      }
+    const active = this.ensureActiveSource(chunk.index)
+    active.output.push(
+      ...this.closeCurrent(active.group, active.group.current, chunk.block.text),
+    )
+    return active.output
+  }
+
+  /**
+   * Point the active source at `index` for a delta or a block-end. The source is
+   * continued when it already carries that index; otherwise the group gains a
+   * source, except that an active source which never ended is closed and given a
+   * group of its own — an unclosed block is never merged.
+   */
+  private ensureActiveSource(index: number): {
+    output: StreamChunk[]
+    group: ReasoningGroup
+  } {
+    const group = this.group
+    if (group === undefined) {
+      const opened = groupFor(index)
+      this.group = opened
+      return { output: [reasoningStart(index)], group: opened }
     }
 
-    output.push(...this.closeCurrent(chunk.block.text))
-    return output
+    if (group.current.index === index) return { output: [], group }
+
+    if (!group.current.closed) {
+      const output = this.flushGroup()
+      const opened = groupFor(index)
+      this.group = opened
+      output.push(reasoningStart(index))
+      return { output, group: opened }
+    }
+
+    this.addSource(group, index)
+    return { output: [], group }
   }
 
-  private addSource(index: number): SourceBlock {
-    if (this.group === undefined) throw new Error('reasoning group is not active')
-    const item = source(index, this.group.hasMeaningfulText)
-    this.group.sources.push(item)
-    this.group.current = item
-    return item
+  private addSource(group: ReasoningGroup, index: number): void {
+    const item = source(index, group.hasMeaningfulText)
+    group.sources.push(item)
+    group.current = item
   }
 
-  private closeCurrent(authoritativeText?: string): StreamChunk[] {
-    if (this.group === undefined) return []
-    const item = this.group.current
+  private closeCurrent(
+    group: ReasoningGroup,
+    item: SourceBlock,
+    authoritativeText?: string,
+  ): StreamChunk[] {
     if (item.closed) return []
     if (authoritativeText !== undefined) item.canonicalText = authoritativeText
 
-    const output = emitUnemittedText(this.group, item, canonicalText(item))
+    const text = canonicalText(item)
+    const output = emitUnemittedText(group, item, text)
     item.closed = true
     this.closedIndexes.add(item.index)
-    if (hasMeaningfulText(canonicalText(item))) this.group.hasMeaningfulText = true
+    if (hasMeaningfulText(text)) group.hasMeaningfulText = true
     return output
   }
 
@@ -302,7 +306,7 @@ class ReasoningNormalizer {
     const group = this.group
     if (group === undefined) return []
 
-    const output = this.closeCurrent()
+    const output = this.closeCurrent(group, group.current)
     if (group.sources.length > 1) this.mergeOccurred = true
     output.push({
       type: 'block-end',
