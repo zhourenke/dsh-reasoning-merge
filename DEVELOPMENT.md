@@ -51,6 +51,26 @@ an end before every non-reasoning boundary.
 No shipped DSH package merges adjacent reasoning blocks, and the version this
 plugin pins is the version it was verified against.
 
+## Shell baseline
+
+The shell commands in this repository were re-checked on **pwsh 7.6.6** (2026-10)
+when this environment moved off Windows PowerShell 5.1, which is still installed
+and still on `PATH`. None of them needed a change for the move, because none uses
+version-dependent syntax — but each one records below what it was measured on, so
+the next shell change is a re-check rather than a guess:
+
+| Command (where it appears) | Measured on pwsh 7.6.6 |
+|---|---|
+| `pnpm install` / `run typecheck` / `run build` / `test` (here) | run as written; the verdict is `$LASTEXITCODE`, and a successful `pnpm run` still writes its script echo to stderr, so stderr output is not a failure signal |
+| `dsh plugin --profile web add` / `remove` (README pair) | the unquoted `@zhourenke/dsh-reasoning-merge` argument reaches the command verbatim, so it needs no quoting |
+| The session-record pipeline (「User-visible contract」) | counts reasoning blocks per message correctly and skips unparseable lines |
+| `New-Item -ItemType Junction` (「Development mount」) | creates the junction; the target is readable through it |
+| `[System.IO.Directory]::Delete($link, $false)` (「Removal」) | removes the junction and leaves the target intact |
+
+`$PSVersionTable.PSEdition` tells the two shells apart: `Core` is pwsh, `Desktop`
+is 5.1. Version-dependent PowerShell behavior is documented once, in the release
+guide's 「PowerShell 版本基线」; do not restate it here.
+
 ## Local development
 
 ```powershell
@@ -137,16 +157,22 @@ true whenever either the transformer or the README changes.
 | No configuration, no off switch | The plugin declares no config and no settings section; disabling means uninstalling. |
 | Removable at any time; new responses then return to the original division | The transformer runs only while its bundle row is composed. Removing the row through a dependency install stops loading at the next start, so the live stream is no longer rewritten. Durable records are never rewritten: removal does not un-merge history. |
 
-Verify the record-level claim on a live session (decompress
-`session.v3.jsonl.zstd` first; the expected result is only `1` and `0`, never
-`2` or more):
+Verify the record-level claim on a live session. Sessions are stored compressed
+as `session.v3.jsonl.zstd`, under
+`$env:DSH_HOME\sessions\<workspace>\<session-id>\`, and this machine has no
+`zstd` reader (`7z` is what is available), so extract one first. The expected
+result is only `1` and `0`, never `2` or more:
 
 ```powershell
-Get-Content <session.v3.jsonl> -Encoding utf8 -Tail 2000 |
+$dir = Join-Path $env:TEMP 'dsh-session'
+7z e '<session dir>\session.v3.jsonl.zstd' "-o$dir" -y | Out-Null
+$log = Join-Path $dir 'session.v3.jsonl'
+
+Get-Content $log -Encoding utf8 -Tail 2000 |
   ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
   Where-Object { $_ -and $_.type -eq 'assistant/message' } |
   ForEach-Object { @($_.data.message.content | Where-Object { $_.type -eq 'reasoning' }).Count } |
-  Group-Object | Select-Object Name, Count
+  Group-Object | Sort-Object Name | Select-Object Name, Count
 ```
 
 ## Development mount
@@ -172,17 +198,32 @@ have been checked.
 ## Removal
 
 Removal behaves differently depending on the install form (measured on
-DSH v0.1.5-rc.1, 2026-09, in a throwaway profile; not re-measured on
-0.1.7-rc.2 — this path is package-manager and profile bookkeeping rather than
-Host behavior):
+DSH v0.1.5-rc.1, 2026-09, in a throwaway profile; this path is package-manager
+and profile bookkeeping rather than Host behavior, and it has not been
+re-measured since — the current baseline is v0.2.0-rc.2):
 
 | Install form | `dsh plugin remove` | Result |
 |---|---|---|
 | Dependency install (`dsh plugin add`, incl. `link:`) | exit 0 | The `dependencies` entry and the `dsh.profile.bundles` row are both removed; the composed config afterwards has no `dsh-reasoning-merge` row, so the next start does not load the plugin and new responses restore the original block division. An orphaned junction may remain in `node_modules` and is harmless. |
 | Manual junction mount (not in `dependencies`) | exit 1 (`ERR_PNPM_CANNOT_REMOVE_MISSING_DEPS`) | Nothing is cleaned: the `bundles` row stays and the junction stays. |
 
-A manual junction mount therefore needs the three manual steps: delete the
-junction non-recursively (`[System.IO.Directory]::Delete($link, $false)`),
-remove the package name from `dsh.profile.bundles` by hand, and restart DSH.
-This is the reason the README scopes its uninstall command to dependency
-installs and calls out the junction case.
+A manual junction mount therefore needs three manual steps. First delete the
+junction itself, naming it by absolute path: `Directory::Delete` resolves a
+relative path against the .NET current directory, which `Set-Location` does not
+move (measured on 7.6.6, same as 5.1).
+
+```powershell
+$link = "$env:DSH_HOME\profiles\web\node_modules\@zhourenke\dsh-reasoning-merge"
+[System.IO.Directory]::Delete($link, $false)
+```
+
+Then remove the package name from `dsh.profile.bundles` by hand and restart DSH.
+`Directory::Delete` is kept over `Remove-Item` because it says "the link, not the
+target" at the API level instead of relying on how `Remove-Item` treats a reparse
+point — a difference that is not about the shell, and whose measurement lives in
+the release guide's 「改动运行中配置要留还原证据」.
+
+The README gives the uninstall command for the dependency-install form only. A
+junction mount is not an install form the README offers — it is the development
+mount described above, which the reader reaches from this file with the checkout
+in hand — so its three manual steps live here and not in the README.
