@@ -35,7 +35,7 @@ Dual-baseline binding points:
 - `peerDependencies`: `@deepseek-ai/dsh-llm` declares the dual range
   `^0.2.0-rc.2 || ^0.2.1-rc.2`, keeping both host generations in the supported
   window.
-- `version`: stays at the lower-bound tuple `0.2.0-rc2.1` per release guide §2.11
+- `version`: stays at the lower-bound tuple `0.2.0-rc2.2` per release guide §2.11
   so existing consumers depending on `^0.2.0-rc2.1` are automatically upgraded
   without an artificial break; future migration to 0.2.1 as the lower bound will
   adopt the dot-preserved suffix `0.2.1-rc.2.1`.
