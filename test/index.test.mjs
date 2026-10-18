@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 import {
@@ -503,3 +504,33 @@ test('an upstream return() failure surfaces after early cancellation', async () 
   assert.deepEqual((await iterator.next()).value, start(0))
   await assert.rejects(iterator.return(), /return failed/)
 })
+
+test('peerDependencies and README compatibility declarations stay in step across host baselines', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const dshPeers = Object.entries(manifest.peerDependencies ?? {})
+    .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
+  assert.ok(dshPeers.length > 0, 'must declare dsh-* peerDependencies')
+
+  const expectedRange = dshPeers[0][1]
+  for (const [name, range] of dshPeers) {
+    assert.equal(range, expectedRange, `${name} peer range must match other dsh-* packages`)
+  }
+
+  const peerVersions = expectedRange
+    .split('||')
+    .map((arm) => arm.trim().replace(/^\^/, ''))
+    .sort()
+
+  const readmeZh = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
+  const zhMatches = [...readmeZh.matchAll(/在 v([0-9a-zA-Z.-]+)（\d{4}-\d{2}）下测试通过。/g)]
+    .map((m) => m[1])
+    .sort()
+  assert.deepEqual(zhMatches, peerVersions, 'README.md compatibility lines must match peerDependencies baselines')
+
+  const readmeEn = readFileSync(new URL('../README.en.md', import.meta.url), 'utf8')
+  const enMatches = [...readmeEn.matchAll(/Tested with v([0-9a-zA-Z.-]+) \([A-Za-z]+ \d{4}\)\./g)]
+    .map((m) => m[1])
+    .sort()
+  assert.deepEqual(enMatches, peerVersions, 'README.en.md compatibility lines must match peerDependencies baselines')
+})
+

@@ -24,18 +24,34 @@ README makes that must stay true.
 
 ## Host baseline
 
-Verified against **DSH v0.2.0-rc.2** and Cordis **4.0.4**. Re-run the release
-guide's 「DSH 升级后的复核」 after every Host upgrade; the checks that matter for
-this plugin are the `llm/stream` waterfall signature, the `StreamChunk`
-grammar, the exported host symbols, the admission gate, and the display
-metadata read.
+Verified against **DSH v0.2.0-rc.2** (2026-09) and **v0.2.1-rc.2** (2026-10)
+under dual-baseline support, and Cordis **4.0.4** (with `~4.0.5` supported by
+`^4.0.4`). Re-run the release guide's 「DSH 升级后的复核」 after every Host upgrade;
+the checks that matter for this plugin are the `llm/stream` waterfall signature,
+the `StreamChunk` grammar, the exported host symbols, the admission gate, and
+the display metadata read.
+
+Dual-baseline binding points:
+- `peerDependencies`: `@deepseek-ai/dsh-llm` declares the dual range
+  `^0.2.0-rc.2 || ^0.2.1-rc.2`, keeping both host generations in the supported
+  window.
+- `version`: stays at the lower-bound tuple `0.2.0-rc2.1` per release guide §2.11
+  so existing consumers depending on `^0.2.0-rc2.1` are automatically upgraded
+  without an artificial break; future migration to 0.2.1 as the lower bound will
+  adopt the dot-preserved suffix `0.2.1-rc.2.1`.
+- `devDependencies`: remains pinned to `0.2.0-rc.2` for baseline local builds,
+  while forward compatibility and full host runtime integration against
+  `0.2.1-rc.2` are verified in the isolated `_next-compat/` environment.
+- Test suite: `test/index.test.mjs` contains automated assertions ensuring
+  `peerDependencies` and README compatibility rows stay in 1:1 lockstep across
+  all supported host baselines.
 
 The transform is not a Host feature. Checked against the shipped packages:
 
 | Host mechanism | Keyed by | Why it does not merge |
 |---|---|---|
-| `BlockAssembler` (`dsh-llm`) | stream `index` | One partial per index; adjacent reasoning indexes stay two blocks. |
-| `AssistantStreamAccumulator` / `assembleAssistantStream` (`dsh-llm`) | stream `index` | Packs consecutive deltas of one index into a run; never joins two indexes. |
+| `BlockAssembler` (`dsh-llm`) | stream `index` | One partial per index; adjacent reasoning indexes stay two blocks. Unchanged in 0.2.1-rc.2. |
+| `AssistantStreamAccumulator` / `assembleAssistantStream` (`dsh-llm`) | stream `index` | Packs consecutive deltas of one index into a run; never joins two indexes. Unchanged in 0.2.1-rc.2. |
 | `joinAssistantStreamText` (`dsh-llm`, new in 0.2.0) | — | Joins text-delta fragments only, and its own contract excludes reasoning fragments. |
 | Live chat block state (`dsh-client-ui-chat`) | `chunk.index` | `blocks[chunk.index]`; two indexes remain two rendered regions. Consecutive `image` blocks are the only kind the renderer groups, and that grouping feeds one multi-image call rather than one block. |
 | pi-ai responses stream (`@earendil-works/pi-ai`) | `event.output_index` | Each reasoning output item gets its own slot, which is what splits one response into several reasoning blocks in the first place. |
@@ -44,12 +60,14 @@ Two neighbours on the same waterfall are worth recognising, because they are
 easy to mistake for this transform. `dsh-session-checkpoint-policy` (new in
 0.2.0) also subscribes to `llm/stream`, but it only awaits the session flush
 before the first chunk and passes every chunk through untouched.
-`dsh-llm/invariant` enforces the chunk grammar — the same grammar this
-transform already satisfies by synthesizing a start for delta-only sources and
-an end before every non-reasoning boundary.
+In 0.2.0, `dsh-llm/invariant` enforced the chunk grammar; in 0.2.1 that internal
+companion was removed, but the LLM stream grammar contract itself remains
+identical — the same grammar this transform satisfies by synthesizing a start for
+delta-only sources, an end before every non-reasoning boundary, and draining
+open blocks at EOF.
 
-No shipped DSH package merges adjacent reasoning blocks, and the version this
-plugin pins is the version it was verified against.
+No shipped DSH package merges adjacent reasoning blocks, and the versions this
+plugin declares are the versions it was verified against.
 
 ## Shell baseline
 
