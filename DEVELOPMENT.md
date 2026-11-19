@@ -24,47 +24,49 @@ README makes that must stay true.
 
 ## Host baseline
 
-Verified against **DSH v0.2.0-rc.2** (2026-09) and **v0.2.1-rc.2** (2026-10)
-under dual-baseline support, and Cordis **4.0.4** (with `~4.0.5` supported by
-`^4.0.4`). Re-run the release guide's 「DSH 升级后的复核」 after every Host upgrade;
+Verified against **DSH v0.2.2-rc.5** (2026-11) and Cordis **4.1.0** — the exact
+pair the host ships: `dsh-llm@0.2.2-rc.5` declares `@deepseek-ai/cordis` as
+`~4.1.0`. Re-run the release guide's 「DSH 升级后的复核」 after every Host upgrade;
 the checks that matter for this plugin are the `llm/stream` waterfall signature,
 the `StreamChunk` grammar, the exported host symbols, the admission gate, and
 the display metadata read.
 
-Dual-baseline binding points:
-- `peerDependencies`: `@deepseek-ai/dsh-llm` declares the dual range
-  `^0.2.0-rc.2 || ^0.2.1-rc.2`, keeping both host generations in the supported
-  window.
-- `version`: stays at the lower-bound tuple `0.2.0-rc2.2` per release guide §2.11
-  so existing consumers depending on `^0.2.0-rc2.1` are automatically upgraded
-  without an artificial break; future migration to 0.2.1 as the lower bound will
-  adopt the dot-preserved suffix `0.2.1-rc.2.1`.
-- `devDependencies`: remains pinned to `0.2.0-rc.2` for baseline local builds,
-  while forward compatibility and full host runtime integration against
-  `0.2.1-rc.2` are verified in the isolated `_next-compat/` environment.
-- Test suite: `test/index.test.mjs` contains automated assertions ensuring
-  `peerDependencies` and README compatibility rows stay in 1:1 lockstep across
-  all supported host baselines.
+Single-baseline binding points:
+- `peerDependencies`: `@deepseek-ai/dsh-llm` declares `^0.2.2-rc.5` and
+  `@deepseek-ai/cordis` declares `^4.1.0`. The window is deliberately one Host
+  generation. `0.2.2-rc.1` satisfies neither arm, so a Host that has not reached
+  rc.5 skips the bundle at the admission gate instead of running a transform
+  verified against a different one.
+- `version`: `0.2.2-rc.5.1`, the dot-preserved `rc.N.M` shape that release guide
+  §2.11 binds to a tuple migration. The tuple moved (0.2.0 → 0.2.2), so the new
+  shape does not sort below the retired `0.2.0-rc2.2` and implies no downgrade;
+  within this tuple the shape stays fixed.
+- `devDependencies`: pinned to the same two versions the peer range names, so
+  local type checks and tests run against the emitted types of that exact Host
+  rather than a range-resolved neighbour.
+- Test suite: `test/index.test.mjs` reverse-derives the README compatibility
+  rows from `peerDependencies`, so one arm means exactly one row per README.
 
 The transform is not a Host feature. Checked against the shipped packages:
 
 | Host mechanism | Keyed by | Why it does not merge |
 |---|---|---|
-| `BlockAssembler` (`dsh-llm`) | stream `index` | One partial per index; adjacent reasoning indexes stay two blocks. Unchanged in 0.2.1-rc.2. |
-| `AssistantStreamAccumulator` / `assembleAssistantStream` (`dsh-llm`) | stream `index` | Packs consecutive deltas of one index into a run; never joins two indexes. Unchanged in 0.2.1-rc.2. |
-| `joinAssistantStreamText` (`dsh-llm`, new in 0.2.0) | — | Joins text-delta fragments only, and its own contract excludes reasoning fragments. |
-| Live chat block state (`dsh-client-ui-chat`) | `chunk.index` | `blocks[chunk.index]`; two indexes remain two rendered regions. Consecutive `image` blocks are the only kind the renderer groups, and that grouping feeds one multi-image call rather than one block. |
+| `BlockAssembler` (`dsh-llm`) | stream `index` | One partial per index; adjacent reasoning indexes stay two blocks. Unchanged in 0.2.2-rc.5. |
+| `AssistantStreamAccumulator` / `assembleAssistantStream` (`dsh-llm`) | stream `index` | Packs consecutive deltas of one index into a run; never joins two indexes. Unchanged in 0.2.2-rc.5. |
+| `joinAssistantStreamText` (`dsh-llm`) | — | Joins text-delta fragments only, and its own contract excludes reasoning fragments. |
+| Live chat block state (`dsh-client-ui-chat`) | `chunk.index` | `blocks[chunk.index]` in the assistant step state, and each block index renders its own `ReasoningRow`. Process grouping does fold consecutive rows into one rail item, but it groups rows without joining their text. |
 | pi-ai responses stream (`@earendil-works/pi-ai`) | `event.output_index` | Each reasoning output item gets its own slot, which is what splits one response into several reasoning blocks in the first place. |
 
-Two neighbours on the same waterfall are worth recognising, because they are
-easy to mistake for this transform. `dsh-session-checkpoint-policy` (new in
-0.2.0) also subscribes to `llm/stream`, but it only awaits the session flush
-before the first chunk and passes every chunk through untouched.
-In 0.2.0, `dsh-llm/invariant` enforced the chunk grammar; in 0.2.1 that internal
-companion was removed, but the LLM stream grammar contract itself remains
-identical — the same grammar this transform satisfies by synthesizing a start for
-delta-only sources, an end before every non-reasoning boundary, and draining
-open blocks at EOF.
+The waterfall has exactly two shipped listeners in 0.2.2-rc.5, and neither is
+easy to mistake for this transform once named: `dsh-session-title` registers
+with `prepend: true` and only records the request behind the first prompt so it
+can name the session, and `dsh-session-checkpoint-policy` awaits the session
+flush before the first chunk and then yields every chunk untouched. The
+`dsh-llm/invariant` companion that used to police the chunk grammar is not
+exported by `dsh-llm@0.2.2-rc.5` at all; the same grammar this transform
+satisfies by synthesizing a start for delta-only sources, an end before every
+non-reasoning boundary, and draining open blocks at EOF is now simply the
+protocol the assembly layer assumes.
 
 No shipped DSH package merges adjacent reasoning blocks, and the versions this
 plugin declares are the versions it was verified against.
@@ -218,7 +220,7 @@ have been checked.
 Removal behaves differently depending on the install form (measured on
 DSH v0.1.5-rc.1, 2026-09, in a throwaway profile; this path is package-manager
 and profile bookkeeping rather than Host behavior, and it has not been
-re-measured since — the current baseline is v0.2.0-rc.2):
+re-measured since — the current baseline is v0.2.2-rc.5):
 
 | Install form | `dsh plugin remove` | Result |
 |---|---|---|

@@ -505,7 +505,7 @@ test('an upstream return() failure surfaces after early cancellation', async () 
   await assert.rejects(iterator.return(), /return failed/)
 })
 
-test('peerDependencies and README compatibility declarations stay in step across host baselines', () => {
+test('peerDependencies and README compatibility declarations stay in step', () => {
   const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   const dshPeers = Object.entries(manifest.peerDependencies ?? {})
     .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
